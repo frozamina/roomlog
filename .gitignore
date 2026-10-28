@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.tmp/
+*.log
+.DS_Store
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+.idea/
+
+# Capacitor 模板自带的示例代码（与包名不符，不参与构建）
+android/app/src/main/java/com/
+android/app/src/test/
+android/app/src/androidTest/
