@@ -170,7 +170,7 @@ const verdict = computed(() => {
 .v.good{color:var(--pine)}
 .crow .k{font-size:9.5px;color:var(--ink-3);text-align:center}
 
-.note{margin:16px 20px 0;padding:13px 14px;border-radius:14px;background:var(--pine-soft);border:1px solid rgba(44,74,59,.12)}
+.note{margin:16px 20px 0;padding:13px 14px;border-radius:14px;background:var(--pine-soft);border:1px solid rgba(143,74,48,.12)}
 .note p{font-size:11.5px;color:var(--pine);line-height:1.7}
 .note p b{font-weight:700}
 

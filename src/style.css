@@ -7,15 +7,20 @@
   --sand-2:#E7E1D1;
   --line:#E7E2D5;
   --line-2:#D6CFBD;
-  --ink:#1D221E;
-  --ink-2:#5B6359;
-  --ink-3:#98A093;
-  --pine:#2C4A3B;
-  --pine-2:#3D6350;
-  --pine-soft:#E7EEE8;
-  --clay:#BF6A45;
-  --clay-soft:#F8E9DF;
-  --clay-ink:#7C3E22;
+  --ink:#241F1A;
+  --ink-2:#60564D;
+  --ink-3:#9C9188;
+  /* 主色：陶土棕。原为墨绿 #2C4A3B，2026-10-28 按用户选择更换。
+     --ink / --ink-2 / --ink-3 原本是按墨绿的色相配的偏绿灰，
+     换主色时一并改为暖灰，否则辅助文字会发绿、显脏。 */
+  --pine:#8F4A30;
+  --pine-2:#A85F3F;
+  --pine-soft:#F6E6DE;
+  /* 警示色：砖红。原先的 #BF6A45 与新主色同属橙棕、明度只差一档，
+     会让「低分/红线」和「品牌/正面」看起来像同一个颜色，故推向红侧。 */
+  --clay:#BC4630;
+  --clay-soft:#F8E4DE;
+  --clay-ink:#7A2A1C;
   --amber:#C9963C;
   --blue:#5B8DC0;
 
@@ -91,7 +96,7 @@ svg{display:block}
   transition:transform .18s var(--ease),filter .18s var(--ease);
 }
 .btn:active{transform:scale(.977);filter:brightness(.95)}
-.btn-primary{background:var(--pine);color:#fff;box-shadow:0 6px 16px -8px rgba(44,74,59,.7)}
+.btn-primary{background:var(--pine);color:#fff;box-shadow:0 6px 16px -8px rgba(143,74,48,.7)}
 .btn-tonal{background:var(--pine-soft);color:var(--pine)}
 .btn-ghost{background:var(--card);border:1px solid var(--line-2);color:var(--ink)}
 .btn-text{height:40px;color:var(--ink-3);font-size:13px;background:none}
@@ -172,7 +177,7 @@ textarea.input{height:auto;min-height:56px;resize:none;line-height:1.55;padding-
 /* ============ Toast ============ */
 .toast{
   position:fixed;left:50%;bottom:calc(88px + var(--safe-b));transform:translateX(-50%);
-  background:rgba(29,34,30,.92);color:#F4F7F3;font-size:12.5px;font-weight:500;
+  background:rgba(36,31,26,.92);color:#FBF7F2;font-size:12.5px;font-weight:500;
   padding:10px 16px;border-radius:99px;z-index:99;white-space:nowrap;
   animation:toastIn .26s var(--spring);
 }

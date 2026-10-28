@@ -244,7 +244,7 @@ function remove() {
 .segs i.on{background:var(--pine)}
 .segs i:active{transform:scale(.9)}
 
-.care{margin-top:12px;background:var(--pine-soft);border:1px solid rgba(44,74,59,.12);border-radius:16px;padding:14px 15px}
+.care{margin-top:12px;background:var(--pine-soft);border:1px solid rgba(143,74,48,.12);border-radius:16px;padding:14px 15px}
 .care-h{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:600;color:var(--pine)}
 .care-h em{font-style:normal;font-size:10.5px;font-weight:500;opacity:.6}
 .care-p{font-size:10.5px;color:var(--pine);opacity:.66;margin-top:5px;line-height:1.5}

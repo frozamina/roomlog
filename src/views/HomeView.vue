@@ -136,9 +136,9 @@ const period = (p) => {
 
 <style scoped>
 .living{
-  margin:14px 20px 0;border-radius:22px;padding:18px 18px 16px;color:#F4F7F3;position:relative;overflow:hidden;
-  background:radial-gradient(120% 100% at 100% 0%, #3C5F4C 0%, #2C4A3B 52%, #22362C 100%);
-  box-shadow:0 2px 6px rgba(34,54,44,.14), 0 18px 34px -18px rgba(34,54,44,.5);
+  margin:14px 20px 0;border-radius:22px;padding:18px 18px 16px;color:#FBF7F2;position:relative;overflow:hidden;
+  background:radial-gradient(120% 100% at 100% 0%, #A85F3F 0%, #8F4A30 52%, #6B351F 100%);
+  box-shadow:0 2px 6px rgba(107,53,31,.14), 0 18px 34px -18px rgba(107,53,31,.5);
   transition:transform .22s var(--ease);
 }
 .living:active{transform:scale(.985)}
@@ -154,7 +154,7 @@ const period = (p) => {
 .stayed{font-size:10px;color:rgba(244,247,243,.45);text-align:right;line-height:1.5}
 .stayed span{color:rgba(244,247,243,.7)}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:16px;background:rgba(255,255,255,.11);border-radius:12px;overflow:hidden}
-.stats div{background:rgba(34,54,44,.34);padding:9px 10px}
+.stats div{background:rgba(107,53,31,.34);padding:9px 10px}
 .stats em{display:block;font-size:9.5px;color:rgba(244,247,243,.55);font-style:normal;letter-spacing:.06em}
 .stats b{display:block;font-size:14px;font-weight:600;margin-top:2px}
 

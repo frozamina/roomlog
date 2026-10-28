@@ -44,11 +44,11 @@ const composition = computed(() => {
   const n = (x) => Number(x) || 0
   const other = (b.other || []).reduce((a, o) => a + n(o.amount), 0)
   const parts = [
-    { k: '房租', v: n(b.rent), c: '#2C4A3B' },
+    { k: '房租', v: n(b.rent), c: '#8F4A30' },
     { k: '电费', v: n(b.elec?.amount), c: '#C9963C' },
     { k: '水费', v: n(b.water?.amount), c: '#5B8DC0' },
     { k: '物业', v: n(b.property), c: '#8C7B62' },
-    { k: '网费', v: n(b.net), c: '#BF6A45' },
+    { k: '网费', v: n(b.net), c: '#BC4630' },
     { k: '燃气', v: n(b.gas?.amount), c: '#D6CFBD' },
     { k: '其他', v: n(b.manageFee) + n(b.parking) + other, c: '#E7E1D1' }
   ].filter(p => p.v > 0)
@@ -296,7 +296,7 @@ function deleteBill() {
 
           <div class="g2">
             <div class="group">
-              <div class="gh"><b style="background:#BF6A45"></b>管理费</div>
+              <div class="gh"><b style="background:#BC4630"></b>管理费</div>
               <div class="g2inner">
                 <div><input v-model.number="form.manageFee" type="number" inputmode="numeric" class="fin num" placeholder="0" /></div>
               </div>
@@ -331,14 +331,14 @@ function deleteBill() {
 </template>
 
 <style scoped>
-.house{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:12px;color:var(--pine);background:var(--pine-soft);border:1px solid rgba(44,74,59,.13);padding:5px 11px;border-radius:99px;font-weight:600}
+.house{display:inline-flex;align-items:center;gap:5px;margin-top:9px;font-size:12px;color:var(--pine);background:var(--pine-soft);border:1px solid rgba(143,74,48,.13);padding:5px 11px;border-radius:99px;font-weight:600}
 .house svg{opacity:.6}
 
 .monthbar{display:flex;align-items:center;gap:4px;padding:14px 20px 0}
 .mbtn{width:26px;height:26px;border-radius:99px;background:var(--sand);display:grid;place-items:center;color:var(--ink-2)}
 .monthbar b{font-size:13px;font-weight:600;padding:0 4px;min-width:96px;text-align:center}
 .spacer{flex:1}
-.addbtn{display:flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:var(--pine);background:var(--pine-soft);border:1px solid rgba(44,74,59,.14);border-radius:99px;padding:6px 11px}
+.addbtn{display:flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;color:var(--pine);background:var(--pine-soft);border:1px solid rgba(143,74,48,.14);border-radius:99px;padding:6px 11px}
 
 .total{padding:20px 20px 0}
 .total .lbl{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);font-weight:600}

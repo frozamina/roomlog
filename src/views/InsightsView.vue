@@ -116,12 +116,14 @@ const maxAvg = computed(() => Math.max(...spentCompare.value.map(s => s.avg), 1)
 .bar-row.hot .k{font-weight:700;color:var(--clay-ink)}
 .bar-row .track{flex:1;height:7px;border-radius:99px;background:var(--sand);overflow:hidden}
 .bar-row .track i{display:block;height:100%;border-radius:99px;background:var(--pine-2);transition:width .8s var(--ease)}
-.bar-row.hot .track i{background:var(--clay)}
+/* 最在意的一项用芥黄高亮，不用砖红——砖红在别处代表低分与红线，
+   用在这里会让人误读成「这项有问题」。 */
+.bar-row.hot .track i{background:var(--amber)}
 .bar-row .p{font-size:11px;font-weight:600;width:26px;text-align:right;flex:0 0 26px;color:var(--ink-2)}
 
-.conclusion{margin:18px 20px 0;border-radius:20px;padding:16px 16px 15px;color:#EFF4EF;position:relative;overflow:hidden;
-  background:linear-gradient(150deg,#33553F 0%,#2A4638 60%,#243B2F 100%);
-  box-shadow:0 2px 6px rgba(34,54,44,.16), 0 20px 34px -20px rgba(34,54,44,.6)}
+.conclusion{margin:18px 20px 0;border-radius:20px;padding:16px 16px 15px;color:#FAF2EC;position:relative;overflow:hidden;
+  background:linear-gradient(150deg,#A85F3F 0%,#8F4A30 60%,#6B351F 100%);
+  box-shadow:0 2px 6px rgba(107,53,31,.16), 0 20px 34px -20px rgba(107,53,31,.6)}
 .conclusion .q{font-family:ui-serif,Georgia,serif;font-size:26px;line-height:1;color:rgba(255,255,255,.22)}
 .conclusion p{font-family:ui-serif,'Noto Serif SC',Georgia,serif;font-size:13.5px;line-height:1.8;margin-top:2px}
 .conclusion p b{color:#F7CE97;font-weight:600;padding:0 2px;background:linear-gradient(180deg,transparent 64%,rgba(245,201,142,.22) 64%)}
