@@ -127,17 +127,73 @@ cd android && ./gradlew assembleDebug
 
 **云端打包**（推荐，本机什么都不用装）：
 
-推送代码到 GitHub 的 `main` / `master` 分支，`.github/workflows/build-apk.yml` 会自动在 Ubuntu runner 上装 Node 20 + JDK 21、构建、同步、编译。约 4 分钟出结果，在仓库的 **Actions** 页面下载 `juzhi-debug-apk` 这个 artifact。
+推送代码到 GitHub 的 `main` / `master` 分支，`.github/workflows/build-apk.yml` 会自动在 Ubuntu runner 上装 Node 20 + JDK 21、构建、同步、编译。约 2 分钟出结果，在仓库的 **Actions** 页面下载 `juzhi-debug-apk` 这个 artifact。
 
 也可以在 Actions 页面手动点 **Run workflow** 触发，不必改代码。
 
-装到手机时需要允许「安装未知来源应用」——因为这是 debug 签名包，不是从应用商店来的。
+装到手机时需要允许「安装未知来源应用」——因为这是自己签名的包，不是从应用商店来的。
+
+---
+
+## 关于签名（重要，改之前务必读）
+
+### 为什么需要专门处理
+
+Android 判断「这是不是同一个 App 的新版本」，靠的不是包名或版本号，而是**签名证书的指纹**。签名不同 → 系统认为这是另一个应用 → 拒绝覆盖安装（`INSTALL_FAILED_UPDATE_INCOMPATIBLE`），或者必须先卸载，而卸载会清空 localStorage 里的全部记录。
+
+AGP 的默认调试密钥位于 `~/.android/debug.keystore`，**在没有该文件时会随机生成一对新的**。这解释了一个很常见的困惑：
+
+- 在**同一台电脑**上反复构建 → 密钥文件只生成一次、之后一直复用 → 签名不变 → 覆盖安装正常
+- 在**GitHub Actions** 上构建 → 每次都是全新虚拟机 → 每次生成不同密钥 → 签名每次都变 → 无法覆盖
+
+所以「以前在本地构建能覆盖、换成云端就不行」不是玄学，是密钥没有持久化。
+
+### 本项目的做法
+
+仓库里提交了一份固定的密钥库：`android/keystore/juzhi.keystore`（PKCS12 格式，RSA 2048，有效期至 2056 年）。`android/app/build.gradle` 里把 `debug` 和 `release` 两种构建类型都指向它：
+
+```gradle
+signingConfigs {
+    permanent {
+        storeFile file("../keystore/juzhi.keystore")
+        storeType "PKCS12"
+        storePassword "juzhi2026"
+        keyAlias "juzhi"
+        keyPassword "juzhi2026"
+    }
+}
+buildTypes {
+    debug   { signingConfig signingConfigs.permanent }
+    release { signingConfig signingConfigs.permanent }
+}
+```
+
+于是每一次云端构建出来的 APK 签名指纹都相同，新版本可以直接覆盖旧版本，数据保留。
+
+证书指纹（可用于核对某个 APK 是不是本项目构建的）：
+
+```
+SHA256: A8:82:50:61:23:02:D7:8A:C4:99:FE:9D:2A:BC:E6:10:E0:D9:1B:55:BD:E8:D9:71:D4:09:83:F9:A0:9E:59:68
+```
+
+工作流的「Verify signing certificate」步骤每次都会打印密钥库指纹和 APK 的实际签名指纹，两者一致才算正常。
+
+### 三条纪律
+
+1. **不要删除或替换 `android/keystore/juzhi.keystore`**。一旦换了文件，已装的 App 就再也无法覆盖升级，只能卸载重装，数据全丢。
+2. **换了电脑、换了仓库、重建 Android 工程，都要把这个文件带过去**。它比代码更不可替代——代码可以从这个仓库恢复，密钥丢了就永久失去了对已发布版本的更新能力。
+3. 建议把 `juzhi.keystore` 和上面那串密码**另行备份一份**（私密网盘、密码管理器附件均可）。
+
+### 一个需要知道的取舍
+
+密钥库是提交在公开仓库里的，密码也就写在 `build.gradle` 里。这意味着任何人都能用它签一个包冒充「居志」。对本项目——自己用、不发布到应用商店、不分发给他人——这个风险可以忽略，换来的是「零依赖、零配置、clone 下来就能构建」的简洁。
+
+但如果你以后要分发给别人或者上架，应该改成：把密钥库转成 base64 存进 GitHub Secrets，工作流里解码使用，仓库里只保留代码。那时候再来改。
 
 ---
 
 ## 已知取舍
 
-- **debug 签名**：目前只有 debug keystore，能装能用，但每次打包签名不同，覆盖安装会丢数据。要做正式版得生成 release keystore 并妥善保管。
 - **数据无备份**：全在 localStorage 里，卸载 App 或清除数据就没了。设置页可以导出 JSON 手动存档，但没有自动备份。
 - **不能多设备同步**：这是「本地优先」的代价，也是有意的选择。
 - **没有照片**：最初想过给每套房拍几张照，但照片存储、压缩、备份会把复杂度拉高一个量级，首版先不做。

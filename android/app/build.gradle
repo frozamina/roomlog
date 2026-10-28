@@ -7,8 +7,10 @@ android {
         applicationId "cn.juzhi.roomlog"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        // 云端构建时由工作流传入 -PverCode=<run_number>，本地构建则退回 1。
+        // 自动递增的好处：装完能在「设置 → 应用信息」里核对是不是新版本。
+        versionCode project.hasProperty('verCode') ? project.verCode.toInteger() : 1
+        versionName project.hasProperty('verName') ? project.verName : "0.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +18,34 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+
+    // 固定的签名密钥。这一块是刻意写死的，改动前请读 README「关于签名」一节。
+    //
+    // 为什么不靠 ~/.android/debug.keystore：
+    //   Android 的默认调试密钥是「每台机器第一次构建时随机生成」的，不是固定的。
+    //   在同一个开发机上反复构建，密钥不变，所以能覆盖安装；
+    //   但 GitHub Actions 每次都是全新的虚拟机，会各自生成不同的调试密钥，
+    //   签名指纹随之改变 —— Android 就拒绝覆盖安装（INSTALL_FAILED_UPDATE_INCOMPATIBLE），
+    //   或者必须先卸载（数据全丢）。
+    //
+    // 把密钥库提交进仓库、并让 debug 和 release 都用它，签名指纹就永远不变了。
+    signingConfigs {
+        permanent {
+            storeFile file("../keystore/juzhi.keystore")
+            storeType "PKCS12"
+            storePassword "juzhi2026"
+            keyAlias "juzhi"
+            keyPassword "juzhi2026"
+        }
+    }
+
     buildTypes {
+        debug {
+            // 关键：覆盖掉 AGP 默认的自动生成调试密钥
+            signingConfig signingConfigs.permanent
+        }
         release {
+            signingConfig signingConfigs.permanent
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

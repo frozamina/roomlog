@@ -34,19 +34,44 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
+      # 用仓库里固定的密钥库签名。每次构建的签名指纹都相同，
+      # 因此新版本 APK 可以直接覆盖安装旧版本，本地数据保留。
+      # 详见 android/app/build.gradle 中 signingConfigs 的注释。
       - name: Build debug APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace \
+            -PverCode=${{ github.run_number }} \
+            -PverName=0.1.${{ github.run_number }}
+
+      - name: Rename APK with version
+        run: |
+          cd android/app/build/outputs/apk/debug
+          mv app-debug.apk "juzhi-0.1.${{ github.run_number }}.apk"
+
+      # 把实际签名指纹打出来，方便核对「这次的包和上次是不是同一把钥匙」。
+      # continue-on-error：这只是诊断，任何异常都不该让构建失败。
+      - name: Verify signing certificate
+        continue-on-error: true
+        run: |
+          APK="android/app/build/outputs/apk/debug/juzhi-0.1.${{ github.run_number }}.apk"
+          ls -lh "$APK" || true
+          echo "--- 密钥库指纹 ---"
+          keytool -list -v -keystore android/keystore/juzhi.keystore \
+            -storetype PKCS12 -storepass juzhi2026 -alias juzhi 2>/dev/null \
+            | grep -E "Owner:|SHA256:" || echo "（未能读取密钥库）"
+          echo "--- APK 实际签名指纹 ---"
+          BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* 2>/dev/null | sort -V | tail -1)
+          if [ -n "$BT" ] && [ -x "$BT/apksigner" ]; then
+            "$BT/apksigner" verify --print-certs "$APK" | grep -E "SHA-256|DN:" || echo "（apksigner 无输出）"
+          else
+            echo "（未找到 apksigner，跳过）"
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: juzhi-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 30
-
-      - name: Show artifact size
-        run: |
-          ls -lh android/app/build/outputs/apk/debug/
+          path: android/app/build/outputs/apk/debug/juzhi-*.apk
+          retention-days: 90
