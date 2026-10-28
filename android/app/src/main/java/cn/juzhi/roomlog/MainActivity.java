@@ -1,4 +1,4 @@
-package com.getcapacitor.myapp;
+package cn.juzhi.roomlog;
 
 import com.getcapacitor.BridgeActivity;
 
