@@ -50,24 +50,40 @@ jobs:
           cd android/app/build/outputs/apk/debug
           mv app-debug.apk "juzhi-0.1.${{ github.run_number }}.apk"
 
-      # 把实际签名指纹打出来，方便核对「这次的包和上次是不是同一把钥匙」。
-      # continue-on-error：这只是诊断，任何异常都不该让构建失败。
-      - name: Verify signing certificate
-        continue-on-error: true
+      # 硬校验：APK 的实际签名指纹必须等于这个常量，否则构建失败。
+      # 这一步存在的意义：如果签名变了，用户覆盖安装会失败、卸载重装会丢数据，
+      # 而那种问题在构建日志里看不出任何异常。宁可让构建红掉，也不要发出一个
+      # 「能装但装不上」的包。
+      # 指纹来自 android/keystore/juzhi.keystore 里的证书，换密钥库时必须同步改这里。
+      - name: Assert signing certificate
         run: |
           APK="android/app/build/outputs/apk/debug/juzhi-0.1.${{ github.run_number }}.apk"
-          ls -lh "$APK" || true
+          EXPECTED="a88250612302d78ac499fe9d2abce610e0d91b55bde8d971d40983f9a09e5968"
+
+          ls -lh "$APK"
           echo "--- 密钥库指纹 ---"
           keytool -list -v -keystore android/keystore/juzhi.keystore \
             -storetype PKCS12 -storepass juzhi2026 -alias juzhi 2>/dev/null \
-            | grep -E "Owner:|SHA256:" || echo "（未能读取密钥库）"
-          echo "--- APK 实际签名指纹 ---"
+            | grep -E "Owner:|SHA256:" || true
+
           BT=$(ls -d "${ANDROID_HOME:-$ANDROID_SDK_ROOT}"/build-tools/* 2>/dev/null | sort -V | tail -1)
-          if [ -n "$BT" ] && [ -x "$BT/apksigner" ]; then
-            "$BT/apksigner" verify --print-certs "$APK" | grep -E "SHA-256|DN:" || echo "（apksigner 无输出）"
-          else
-            echo "（未找到 apksigner，跳过）"
+          if [ -z "$BT" ] || [ ! -x "$BT/apksigner" ]; then
+            echo "::warning::未找到 apksigner，跳过签名校验（这不代表签名正确）"
+            exit 0
           fi
+
+          ACTUAL=$("$BT/apksigner" verify --print-certs "$APK" \
+                    | grep -oE "SHA-256 digest: [0-9a-fA-F]+" | head -1 | awk '{print $3}' \
+                    | tr 'A-F' 'a-f')
+          echo "--- APK 实际签名指纹 ---"
+          echo "期望: $EXPECTED"
+          echo "实际: $ACTUAL"
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::签名指纹不符！这个包装不上已安装的旧版本，会要求卸载重装并丢失数据。"
+            exit 1
+          fi
+          echo "✅ 签名一致，可以直接覆盖安装旧版本"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
