@@ -30,8 +30,32 @@ const recent = computed(() => {
   const vals = ms.map(m => byMonth[m])
   const max = Math.max(...vals, 1), min = Math.min(...vals, 0)
   const span = Math.max(max - min, 1)
-  return ms.map((m, i) => ({ m, v: vals[i], h: Math.round(14 + 30 * ((vals[i] - min) / span)) }))
+  // h 只在「只有一个月」的兜底柱上用到（那时画折线就是一个孤点）。
+  // 基线固定 0，所以柱高是真实占比：房租是大头，月份差异本来就只有几像素，
+  // 不能靠拉伸区间伪造，否则两千的房租和两千一的看着差一倍。
+  return ms.map((m, i) => ({ m, v: vals[i], h: Math.round(26 + 40 * ((vals[i] - min) / span)) }))
 })
+/* 折线用区间自适应（14%~86%），房租固定、只有水电浮动也能看出走势；
+   x 取 (i+0.5)/n 是为了跟下面等分的月份标签对齐，两端也不贴边。
+   SVG 用 preserveAspectRatio=none 铺满，线宽靠 non-scaling-stroke 保持 2px 不变形。 */
+const pts = computed(() => {
+  const vals = recent.value.map(r => r.v)
+  const n = vals.length
+  const max = Math.max(...vals), min = Math.min(...vals)
+  const span = Math.max(max - min, 1)
+  return recent.value.map((r, i) => ({
+    m: r.m,
+    x: ((i + 0.5) / n) * 100,
+    y: n === 1 ? 50 : 14 + 72 * (1 - (r.v - min) / span)
+  }))
+})
+const linePts = computed(() => pts.value.map(p => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' '))
+const areaPts = computed(() => {
+  const p = pts.value
+  if (!p.length) return ''
+  return `${p[0].x.toFixed(2)},100 ${linePts.value} ${p[p.length - 1].x.toFixed(2)},100`
+})
+
 const recentAvg = computed(() => {
   if (!recent.value.length) return 0
   return Math.round(recent.value.reduce((a, r) => a + r.v, 0) / recent.value.length)
@@ -129,11 +153,27 @@ const period = (p) => {
           <span>最近支出</span>
           <b class="num">月均 ¥{{ money(recentAvg) }}</b>
         </div>
-        <div class="rb">
-          <div class="rc" v-for="r in recent" :key="r.m">
-            <i :style="{ height: r.h + 'px' }"></i>
-            <span class="num">{{ r.m.slice(2).replace('-', '.') }}</span>
-          </div>
+        <div class="rb" v-if="recent.length > 1">
+          <svg class="sv" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="sparkfill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--pine)" stop-opacity=".18" />
+                <stop offset="100%" stop-color="var(--pine)" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <polygon :points="areaPts" fill="url(#sparkfill)" />
+            <polyline :points="linePts" fill="none" stroke="var(--pine)" stroke-width="2"
+                      vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <i class="sdot" v-for="(p, i) in pts" :key="p.m" :class="{ last: i === pts.length - 1 }"
+             :style="{ left: p.x + '%', top: p.y + '%' }"></i>
+        </div>
+        <!-- 只有一个月时画折线就是一个孤零零的点，退回一根柱子 -->
+        <div class="rb solo" v-else>
+          <i :style="{ height: recent[0].h + 'px' }"></i>
+        </div>
+        <div class="mx">
+          <span v-for="r in recent" :key="r.m" class="num">{{ r.m.slice(2).replace('-', '.') }}</span>
         </div>
       </div>
 
@@ -193,13 +233,19 @@ const period = (p) => {
 .rh{display:flex;justify-content:space-between;align-items:baseline}
 .rh span{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .rh b{font-size:10.5px;color:var(--ink-2);font-weight:600}
-/* justify-content:center + max-width 是为了「只有一两个月数据」的情形：
-   纯 flex:1 会让唯一那根柱子吃掉整行宽，看上去就是一条粗横杠。 */
-.rb{display:flex;align-items:flex-end;gap:7px;height:54px;margin-top:8px;justify-content:center}
-.rc{flex:1 1 0;min-width:0;max-width:52px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
-.rc i{width:100%;flex:none;border-radius:4px 4px 2px 2px;background:var(--sand-2);transition:height .5s var(--ease)}
-.rc:last-child i{background:var(--pine)}
-.rc span{font-size:8px;color:var(--ink-3)}
+/* 柱区 72 高、柱宽上限 44、间距 10，底下一条基线（月份标签挪到 .mx 单独一行，
+   否则基线会从标签中间穿过去）。
+   比例：44×66 是竖条；之前的 52×44 宽大于高，看着像一排方块。
+   柱组居中不铺满 —— 铺满的话五根柱会被拉到 48 宽，又回去了。 */
+.rb{position:relative;height:72px;margin-top:10px}
+.rb.solo{display:flex;justify-content:center;align-items:flex-end;border-bottom:1px solid var(--line)}
+.rb.solo i{width:44px;border-radius:8px 8px 4px 4px;background:var(--pine)}
+.sv{position:absolute;inset:0;width:100%;height:100%;display:block}
+.sdot{position:absolute;width:6px;height:6px;border-radius:99px;background:var(--card);
+  border:1.5px solid var(--pine);transform:translate(-50%,-50%);box-sizing:border-box}
+.sdot.last{width:9px;height:9px;background:var(--pine);border-color:var(--card)}
+.mx{display:flex;justify-content:space-between;margin-top:6px}
+.mx span{flex:1;text-align:center;font-size:8px;color:var(--ink-3)}
 .sum{margin:8px 22px 26px;padding-top:12px;border-top:1px dashed var(--line-2);display:flex;justify-content:space-between;align-items:baseline;font-size:10.5px;color:var(--ink-3)}
 .sum b{font-size:12px;font-weight:600;color:var(--ink-2)}
 </style>
