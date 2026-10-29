@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # 发布 Release 需要写权限，默认 token 只有读权限
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -91,3 +94,33 @@ jobs:
           name: juzhi-debug-apk
           path: android/app/build/outputs/apk/debug/juzhi-*.apk
           retention-days: 90
+
+      # 固定下载地址（不用登录、不用解压 zip）：
+      #   https://github.com/frozamina/roomlog/releases/latest/download/juzhi.apk
+      #
+      # 只维护一个 tag 为 latest 的 release，每次推送覆盖同名资产，
+      # 这样地址永远不变，也不会在 Releases 页面堆出一长串历史版本。
+      # 资产文件名必须固定叫 juzhi.apk —— 改名会让上面的地址失效。
+      - name: Publish release
+        run: |
+          cd android/app/build/outputs/apk/debug
+          cp "juzhi-0.1.${{ github.run_number }}.apk" juzhi.apk
+          ls -lh juzhi.apk
+
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest juzhi.apk --clobber
+          else
+            gh release create latest juzhi.apk \
+              --title "居志 · 最新构建" \
+              --notes "由 GitHub Actions 自动发布。每次推送都会覆盖这个文件，下载 juzhi.apk 直接安装即可，能覆盖旧版本、不丢数据。" \
+              --latest
+          fi
+
+          # 标题带上版本号，方便一眼看出这个包是哪次构建；tag 也跟着挪到最新提交。
+          # 这两步失败不影响 APK 本身，所以不设成硬失败。
+          gh release edit latest \
+            --title "居志 · 最新构建（0.1.${{ github.run_number }}）" \
+            --target "${GITHUB_SHA}" || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
