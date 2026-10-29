@@ -2,8 +2,10 @@
 import { computed, inject, reactive, ref } from 'vue'
 import Icon from '../components/Icon.vue'
 import FieldInput from '../components/FieldInput.vue'
+import PhotoViewer from '../components/PhotoViewer.vue'
 import { go, back, scrollTop } from '../router'
 import { db, DIMENSIONS, RATE_ITEMS, FIELD_GROUPS, blankProperty, today } from '../store'
+import { addPhotos, ensure, thumbOf, removePhoto as dropPhoto } from '../photos'
 
 const props = defineProps({ id: String, q: Object })
 const toast = inject('toast')
@@ -18,6 +20,65 @@ if (!draft.care) draft.care = {}
 const steps = ['基本信息', '条件打分', '硬件与费用', '周边与房东']
 const step = ref(Math.min(Number(props.q?.step || 0), 3))
 const careKeys = ref(Object.keys(draft.care).filter(k => Number(draft.care[k]) >= 3))
+
+/* ---- 照片 ---- */
+const MAX_PHOTOS = 20
+const camInput = ref(null)
+const albumInput = ref(null)
+const busy = ref(false)
+const viewerOn = ref(false)
+const viewerAt = ref(0)
+// 已从草稿里摘掉、等保存时才真正删除的 id。
+// 不能一点删除就从库里抹掉——用户可能只是反悔退出了编辑页。
+const removedIds = []
+
+if (!Array.isArray(draft.photos)) draft.photos = []
+ensure(draft.photos.map(x => x.id))
+
+const thumb = (id) => thumbOf(id)
+const photoIds = computed(() => draft.photos.map(x => x.id))
+const left = computed(() => MAX_PHOTOS - draft.photos.length)
+
+function openViewer(i) {
+  viewerAt.value = i
+  viewerOn.value = true
+}
+
+async function onPick(e) {
+  const files = [...(e.target.files || [])]
+  e.target.value = ''            // 同一张照片连选两次也要能触发 change
+  if (!files.length) return
+
+  if (left.value <= 0) {
+    toast(`最多 ${MAX_PHOTOS} 张，删掉几张再加`)
+    return
+  }
+  const take = files.slice(0, left.value)
+  busy.value = true
+  try {
+    const added = await addPhotos(take)
+    draft.photos.push(...added)
+    if (!added.length) toast('没认出这是图片')
+    else if (files.length > take.length) toast(`已存 ${added.length} 张，超出的略过了`)
+    else toast(`已添加 ${added.length} 张`)
+  } catch (err) {
+    console.warn(err)
+    toast('这张图读不出来，换一张试试')
+  } finally {
+    busy.value = false
+  }
+}
+
+function removePhoto(i) {
+  const ph = draft.photos.splice(i, 1)[0]
+  if (ph && !isNew) removedIds.push(ph.id)
+}
+
+function toCover(i) {
+  if (i <= 0) return
+  const [ph] = draft.photos.splice(i, 1)
+  draft.photos.unshift(ph)
+}
 
 const group = (key) => FIELD_GROUPS.find(g => g.key === key)
 
@@ -61,6 +122,8 @@ function save() {
   } else if (source) {
     Object.assign(source, draft)
   }
+  // 这里才真正从 IndexedDB 删掉被摘除的照片
+  removedIds.forEach(id => dropPhoto(id))
   toast('已保存')
   go('detail', draft.id, { reset: false })
 }
@@ -119,6 +182,38 @@ function remove() {
               <input v-model="draft.endDate" class="inp num" type="date" />
             </div>
           </div>
+        </div>
+
+        <div class="card pad phcard">
+          <div class="ph-head">
+            <span class="lbl">照片</span>
+            <em class="num">{{ draft.photos.length }} / {{ MAX_PHOTOS }}</em>
+          </div>
+          <div class="ph-grid">
+            <div class="ph" v-for="(ph, i) in draft.photos" :key="ph.id">
+              <img v-if="thumb(ph.id)" :src="thumb(ph.id)" alt="" @click="openViewer(i)" />
+              <div v-else class="ph-miss" @click="openViewer(i)"><Icon name="image" :size="16" /></div>
+              <button class="ph-x" @click.stop="removePhoto(i)" aria-label="删除这张">
+                <Icon name="close" :size="11" :sw="2.6" />
+              </button>
+              <span class="ph-cover" v-if="i === 0">封面</span>
+              <button class="ph-set" v-else @click.stop="toCover(i)">设封面</button>
+            </div>
+
+            <div class="ph ph-wait" v-if="busy"><span class="spin"></span></div>
+
+            <template v-if="left > 0">
+              <button class="ph-add" @click="camInput.click()">
+                <Icon name="camera" :size="19" /><span>拍照</span>
+              </button>
+              <button class="ph-add" @click="albumInput.click()">
+                <Icon name="image" :size="19" /><span>相册</span>
+              </button>
+            </template>
+          </div>
+          <p class="ph-tip">
+            建议拍：窗外视野、厨卫、水电表、合同首页。第一张作封面，点图片可放大看。
+          </p>
         </div>
       </div>
 
@@ -200,6 +295,12 @@ function remove() {
     <div class="foot">
       <button class="btn btn-primary" @click="next">{{ step === steps.length - 1 ? '保存' : '下一步' }}</button>
     </div>
+
+    <!-- capture 让安卓直接调相机；不给 capture 的那个走系统相册选择器 -->
+    <input ref="camInput" class="hideinp" type="file" accept="image/*" capture="environment" @change="onPick" />
+    <input ref="albumInput" class="hideinp" type="file" accept="image/*" multiple @change="onPick" />
+
+    <PhotoViewer v-if="viewerOn" :ids="photoIds" :start="viewerAt" @close="viewerOn = false" />
   </div>
 </template>
 
@@ -251,4 +352,36 @@ function remove() {
 
 .del{margin:18px auto 0;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--clay);padding:10px 16px}
 .foot{flex:0 0 auto;padding:10px 20px calc(8px + var(--safe-b));background:var(--paper);border-top:1px solid var(--line)}
+
+/* ============ 照片 ============ */
+.phcard{padding:4px 14px 11px;margin-top:12px}
+.ph-head{display:flex;align-items:baseline;justify-content:space-between;padding:9px 0 0}
+.ph-head .lbl{margin-bottom:0}
+.ph-head em{font-style:normal;font-size:9.5px;color:var(--ink-3)}
+.ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px}
+.ph{position:relative;aspect-ratio:1;border-radius:11px;overflow:hidden;background:var(--sand)}
+.ph img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .18s var(--ease)}
+.ph img:active{transform:scale(1.04)}
+/* 图片数据缺失时的占位，别让 <img> 显示成破图 */
+.ph-miss{display:grid;place-items:center;width:100%;height:100%;color:var(--ink-3)}
+.ph-x{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:99px;
+  background:rgba(24,18,14,.6);color:#fff;display:grid;place-items:center;backdrop-filter:blur(4px)}
+.ph-x:active{background:rgba(122,42,28,.9)}
+/* 标签不能贴边：图块有 11px 圆角且 overflow:hidden，
+   left:0 会被圆角切掉字头。缩进 5px 并自己带圆角。 */
+.ph-cover{position:absolute;left:5px;bottom:5px;font-size:8.5px;letter-spacing:.06em;color:#fff;
+  background:rgba(143,74,48,.94);padding:2.5px 7px;border-radius:6px}
+.ph-set{position:absolute;left:5px;bottom:5px;font-size:8.5px;letter-spacing:.04em;color:#fff;
+  background:rgba(24,18,14,.56);padding:2.5px 7px;border-radius:6px;backdrop-filter:blur(4px)}
+.ph-add{aspect-ratio:1;border-radius:11px;border:1.5px dashed var(--line-2);background:transparent;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  font-size:10px;color:var(--ink-3);transition:all .16s var(--ease)}
+.ph-add:active{transform:scale(.96);background:var(--sand);border-color:var(--pine)}
+.ph-add svg{color:var(--pine);opacity:.85}
+.ph-wait{display:grid;place-items:center}
+.spin{width:19px;height:19px;border-radius:99px;border:2px solid var(--line-2);
+  border-top-color:var(--pine);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.ph-tip{font-size:10px;color:var(--ink-3);line-height:1.65;margin-top:9px}
+.hideinp{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 </style>

@@ -1,25 +1,52 @@
 <script setup>
-import { computed, inject } from 'vue'
+import { computed, inject, onMounted, ref } from 'vue'
 import Icon from '../components/Icon.vue'
-import { db, billTotal, money, totalSpent, totalMonths, seed, clearAll, thisMonth, load } from '../store'
+import { db, billTotal, money, totalSpent, totalMonths, seed, clearAll, thisMonth, load, save } from '../store'
+import { cache, dumpAll, ensure, restoreAll, clearPhotos } from '../photos'
 
 const toast = inject('toast')
+const fileInput = ref(null)
+const busy = ref(false)
+
+function allPhotoIds() {
+  const ids = []
+  for (const p of db.properties) for (const ph of (p.photos || [])) if (ph && ph.id) ids.push(ph.id)
+  return ids
+}
+
+onMounted(() => ensure(allPhotoIds()))
 
 const stats = computed(() => {
   const bills = db.properties.reduce((a, p) => a + (p.bills?.length || 0), 0)
   const raw = localStorage.getItem('juzhi.v1') || ''
+  const ids = allPhotoIds()
+  // dataURL 是 base64，实际字节数约为字符数的 3/4
+  let bytes = 0
+  for (const id of ids) {
+    const c = cache[id]
+    if (!c) continue
+    bytes += ((c.full?.length || 0) + (c.thumb?.length || 0)) * 0.75
+  }
   return {
     props: db.properties.length,
     bills,
+    photos: ids.length,
+    photoKB: Math.round(bytes / 1024),
     spent: totalSpent(),
     months: totalMonths(),
     size: (raw.length / 1024).toFixed(1)
   }
 })
 
-function download(name, text, type) {
+const photoSize = computed(() => {
+  const kb = stats.value.photoKB
+  return kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB'
+})
+
+// bom 只对 CSV 开：Excel 读中文需要它，但 JSON 前面加 BOM 会让 JSON.parse 直接报错
+function download(name, text, type, bom = false) {
   try {
-    const blob = new Blob(['\ufeff' + text], { type })
+    const blob = new Blob([bom ? '\ufeff' + text : text], { type })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -31,15 +58,35 @@ function download(name, text, type) {
 }
 
 async function exportJSON() {
-  const text = JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), properties: db.properties }, null, 2)
+  if (busy.value) return
+  const ids = allPhotoIds()
+  busy.value = true
+  let photoData = {}
+  if (ids.length) {
+    toast(`正在打包 ${ids.length} 张照片…`)
+    try { photoData = await dumpAll(ids) } catch (e) { console.warn(e) }
+  }
+  busy.value = false
+
+  const payload = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    properties: db.properties,
+    photoData
+  }
+  const text = JSON.stringify(payload, null, 2)
   const name = `居志备份-${new Date().toISOString().slice(0, 10)}.json`
   const ok = download(name, text, 'application/json')
-  try {
-    await navigator.clipboard.writeText(text)
-    toast(ok ? '已导出，同时复制到剪贴板' : '已复制到剪贴板')
-  } catch {
-    toast(ok ? '已导出文件' : '导出失败')
+
+  // 剪贴板放不下几 MB 的内容，大备份就只给文件，别让用户以为复制成功了
+  if (text.length < 600000) {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast(ok ? `已导出（含 ${ids.length} 张照片），并复制到剪贴板` : '已复制到剪贴板')
+      return
+    } catch (e) { /* 落下去给文件提示 */ }
   }
+  toast(ok ? `已导出（含 ${ids.length} 张照片）` : '导出失败')
 }
 
 function exportCSV() {
@@ -57,21 +104,52 @@ function exportCSV() {
       ].join(','))
     }
   }
-  const ok = download(`居志账单-${new Date().toISOString().slice(0, 10)}.csv`, rows.join('\n'), 'text/csv')
+  const ok = download(`居志账单-${new Date().toISOString().slice(0, 10)}.csv`, rows.join('\n'), 'text/csv', true)
   toast(ok ? '账已导出 CSV' : '导出失败')
 }
 
-function resetDemo() {
+function pickImport() {
+  fileInput.value?.click()
+}
+
+async function onImport(e) {
+  const f = e.target.files?.[0]
+  e.target.value = ''
+  if (!f) return
+  if (!confirm('导入会覆盖当前全部房源、账单和照片。建议先导出一次备份，确定继续？')) return
+
+  busy.value = true
+  try {
+    const data = JSON.parse(await f.text())
+    if (!Array.isArray(data.properties)) throw new Error('这不是居志的备份文件')
+    db.properties = data.properties
+    db.settings = { seeded: true }
+    if (data.photoData && typeof data.photoData === 'object') {
+      await restoreAll(data.photoData)
+    }
+    save()
+    toast(`已恢复 ${data.properties.length} 套房`)
+  } catch (err) {
+    console.warn(err)
+    toast('导入失败：' + (err?.message || '文件读不出来'))
+  } finally {
+    busy.value = false
+  }
+}
+
+async function resetDemo() {
   if (!confirm('会覆盖当前所有数据，确定载入示例？')) return
   clearAll()
+  await clearPhotos()
   seed()
   load()
   toast('已载入示例数据')
 }
 
-function wipe() {
-  if (!confirm('清空所有房源与账单？这个操作不可恢复，建议先导出备份。')) return
+async function wipe() {
+  if (!confirm('清空所有房源、账单与照片？这个操作不可恢复，建议先导出备份。')) return
   clearAll()
+  await clearPhotos()
   toast('已清空')
 }
 </script>
@@ -91,11 +169,18 @@ function wipe() {
     </div>
 
     <div class="section">
-      <div class="section-title"><h5>数据</h5><span class="sz num">{{ stats.size }} KB</span></div>
+      <div class="section-title"><h5>数据</h5>
+        <span class="sz num">{{ stats.photos ? stats.photos + ' 张照片 · ' + photoSize : '暂无照片' }}</span>
+      </div>
       <div class="card">
-        <button class="row" @click="exportJSON">
+        <button class="row" @click="exportJSON" :disabled="busy">
           <div class="ri"><Icon name="download" :size="17" /></div>
-          <div class="rt"><b>导出 JSON 备份</b><em>含全部房源与账单，可用来恢复</em></div>
+          <div class="rt"><b>导出 JSON 备份</b><em>含房源、账单与照片，可用来恢复</em></div>
+          <Icon name="chevron" :size="14" class="ch" />
+        </button>
+        <button class="row" @click="pickImport" :disabled="busy">
+          <div class="ri"><Icon name="upload" :size="17" /></div>
+          <div class="rt"><b>从备份恢复</b><em>导入之前导出的 JSON，会覆盖现有数据</em></div>
           <Icon name="chevron" :size="14" class="ch" />
         </button>
         <button class="row" @click="exportCSV">
@@ -114,6 +199,7 @@ function wipe() {
           <Icon name="chevron" :size="14" class="ch" />
         </button>
       </div>
+      <input ref="fileInput" class="hideinp" type="file" accept="application/json,.json" @change="onImport" />
 
       <div class="section-title"><h5>关于</h5></div>
       <div class="card about">
@@ -149,6 +235,8 @@ function wipe() {
 .ov .o:first-child{grid-column:span 1}
 
 .sz{font-size:10px;color:var(--ink-3)}
+.row:disabled{opacity:.45}
+.hideinp{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 .row{display:flex;align-items:center;gap:11px;width:100%;padding:13px 14px;border-bottom:1px solid var(--line);text-align:left}
 .row:last-child{border-bottom:none}
 .ri{width:32px;height:32px;border-radius:10px;background:var(--sand);display:grid;place-items:center;color:var(--pine);flex:0 0 32px}

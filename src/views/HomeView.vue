@@ -1,12 +1,22 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import Icon from '../components/Icon.vue'
 import { go } from '../router'
 import { db, sortedProperties, isLiving, livability, monthlyAvg, perSqm, monthLabel, monthsBetween, money, totalSpent, totalMonths, thisMonth, billTotal } from '../store'
+import { ensure, thumbOf } from '../photos'
 
 const list = computed(() => sortedProperties())
 const living = computed(() => list.value.find(p => isLiving(p)))
 const past = computed(() => list.value.filter(p => !isLiving(p)))
+
+// 第一张照片即封面
+const coverOf = (p) => thumbOf((p.photos || [])[0]?.id)
+
+onMounted(() => {
+  const ids = []
+  for (const p of db.properties) for (const ph of (p.photos || [])) ids.push(ph.id)
+  ensure(ids)
+})
 const months = computed(() => totalMonths())
 const billCount = computed(() => db.properties.reduce((a, p) => a + (p.bills?.length || 0), 0))
 const spent = computed(() => totalSpent())
@@ -100,6 +110,7 @@ const period = (p) => {
         </div>
         <div class="section">
           <div class="rec" v-for="p in past" :key="p.id" @click="go('detail', p.id)">
+            <div class="thumb" v-if="coverOf(p)"><img :src="coverOf(p)" alt="" loading="lazy" /></div>
             <div class="main">
               <div class="t">{{ p.name }}</div>
               <div class="m num">{{ period(p) }} · 月均 ¥{{ money(monthlyAvg(p)) }}</div>
@@ -143,6 +154,9 @@ const period = (p) => {
 }
 .living:active{transform:scale(.985)}
 .living::after{content:"";position:absolute;width:180px;height:180px;right:-64px;top:-72px;border-radius:99px;border:1px solid rgba(255,255,255,.12)}
+/* 试过把封面图铺在这张卡上，放弃了：卡片里有 9.5px 的说明文字，
+   蒙版压到能读清小字时照片只剩一团糊影，反而像渲染出错。
+   封面图放在详情页大图和历史房源缩略图里，那里有足够空间。 */
 .pill-live{display:inline-flex;align-items:center;gap:5px;font-size:10px;letter-spacing:.08em;padding:3px 9px;border-radius:99px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.16)}
 .pill-live b{width:5px;height:5px;border-radius:99px;background:#9AD6A9;box-shadow:0 0 0 2.5px rgba(154,214,169,.22)}
 .living h4{font-size:17px;font-weight:600;margin-top:11px;letter-spacing:.01em}
@@ -165,6 +179,8 @@ const period = (p) => {
 
 .rec{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 14px;display:flex;gap:12px;align-items:center;margin-bottom:10px;box-shadow:var(--sh-1);transition:transform .2s var(--ease)}
 .rec:active{transform:scale(.985)}
+.rec .thumb{width:44px;height:44px;border-radius:11px;overflow:hidden;flex:0 0 44px;background:var(--sand)}
+.rec .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .rec .main{flex:1;min-width:0}
 .rec .t{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rec .m{font-size:10.5px;color:var(--ink-3);margin-top:3px}

@@ -1,11 +1,24 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import Icon from '../components/Icon.vue'
+import PhotoViewer from '../components/PhotoViewer.vue'
 import { go, back } from '../router'
 import { db, DIMENSIONS, dimScore, livability, monthlyAvg, perSqm, billTotal, money, monthsBetween, isLiving, monthLabel } from '../store'
+import { ensure, thumbOf } from '../photos'
 
 const props = defineProps({ id: String })
 const p = computed(() => db.properties.find(x => x.id === props.id) || db.properties[0] || { scores: {}, care: {}, facts: {}, tags: [], bills: [] })
+
+/* ---- 照片 ---- */
+const photos = computed(() => (p.value.photos || []).filter(x => x && x.id))
+const photoIds = computed(() => photos.value.map(x => x.id))
+// 封面用缩略图：400px 的缩略图铺 232px 高的头图足够清楚，加载还快得多
+const cover = computed(() => thumbOf(photoIds.value[0]))
+const viewerOn = ref(false)
+const viewerAt = ref(0)
+const thumb = (id) => thumbOf(id)
+function openViewer(i) { viewerAt.value = i; viewerOn.value = true }
+onMounted(() => ensure(photoIds.value))
 
 const idx = computed(() => livability(p.value) || '—')
 
@@ -44,8 +57,10 @@ const openBill = () => go('bills', p.value.id)
 <template>
   <div class="root">
     <div class="view">
-      <div class="hero">
-        <div class="win"></div>
+      <div class="hero" :class="{ withph: cover }"
+           :style="cover ? { backgroundImage: 'url(' + cover + ')' } : null">
+        <div class="win" v-if="!cover"></div>
+        <div class="shade" v-if="cover"></div>
         <div class="nav-float">
           <button class="nav-btn glass" @click="back()" aria-label="返回"><Icon name="back" :size="16" /></button>
           <button class="nav-btn glass" @click="openEdit" aria-label="编辑"><Icon name="edit" :size="16" /></button>
@@ -130,6 +145,19 @@ const openBill = () => go('bills', p.value.id)
           </div>
         </div>
 
+        <div class="gallery" v-if="photos.length">
+          <div class="section-title" style="padding-left:0;padding-right:0">
+            <h5>照片</h5>
+            <button @click="openViewer(0)">{{ photos.length }} 张 ›</button>
+          </div>
+          <div class="gstrip">
+            <button class="gitem" v-for="(ph, i) in photos" :key="ph.id" @click="openViewer(i)">
+              <img v-if="thumb(ph.id)" :src="thumb(ph.id)" alt="" loading="lazy" />
+              <span v-else class="gmiss"><Icon name="image" :size="15" /></span>
+            </button>
+          </div>
+        </div>
+
         <div class="bills" v-if="p.bills?.length">
           <div class="section-title" style="padding-left:0;padding-right:0">
             <h5>账单</h5>
@@ -153,6 +181,8 @@ const openBill = () => go('bills', p.value.id)
       <button class="btn btn-ghost" @click="openBill">加账单</button>
       <button class="btn btn-primary" @click="openEdit">编辑这套档案</button>
     </div>
+
+    <PhotoViewer v-if="viewerOn" :ids="photoIds" :start="viewerAt" @close="viewerOn = false" />
   </div>
 </template>
 
@@ -164,6 +194,12 @@ const openBill = () => go('bills', p.value.id)
   background:linear-gradient(150deg,#EAE1CB 0%,#DCD1B6 52%,#C9BEA4 100%)}
 .hero::before{content:"";position:absolute;inset:0;background:radial-gradient(70% 90% at 16% 18%, rgba(255,253,240,.85), transparent 62%)}
 .hero::after{content:"";position:absolute;left:0;right:0;bottom:0;height:40%;background:linear-gradient(180deg,transparent,rgba(251,249,243,.9))}
+/* 有封面图时整块换成实拍：去掉原先那层米色渐变与白光，
+   只留顶部的暗顶，保证浮在照片上的两个按钮仍然清楚 */
+.hero.withph{background-size:cover;background-position:center;background-color:#C9BEA4}
+.hero.withph::before{display:none}
+.hero.withph::after{height:46%}
+.shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(26,19,15,.36) 0%,rgba(26,19,15,0) 40%)}
 .win{position:absolute;left:40px;top:calc(var(--safe-t) + 52px);width:132px;height:150px;border-radius:2px;z-index:1;
   background:linear-gradient(170deg,#FFFDF3 0%,#FBF4DC 52%,#F2E7C9 100%);
   border:5px solid rgba(228,216,188,.9);box-shadow:0 16px 36px -16px rgba(118,108,82,.55)}
@@ -215,6 +251,16 @@ const openBill = () => go('bills', p.value.id)
 .frow b.warn{color:var(--clay-ink)}
 .frow em{font-style:normal;color:var(--ink-3);font-weight:400}
 .frow b.quote{font-weight:400;color:var(--ink-2);line-height:1.5}
+
+.gstrip{display:flex;gap:8px;overflow-x:auto;padding-bottom:3px;scroll-snap-type:x mandatory}
+.gstrip::-webkit-scrollbar{display:none}
+.gitem{flex:0 0 84px;width:84px;height:84px;border-radius:12px;overflow:hidden;
+  background:var(--sand);scroll-snap-align:start;transition:transform .16s var(--ease)}
+.gitem:active{transform:scale(.95)}
+.gitem img{width:100%;height:100%;object-fit:cover;display:block}
+/* 记录还在但图片数据没了（清过站点数据、或存储被系统回收）
+   时给个占位，否则 <img> 会显示成破图 */
+.gmiss{display:grid;place-items:center;width:100%;height:100%;color:var(--ink-3)}
 
 .bills{margin-top:4px}
 .brow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}

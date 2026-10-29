@@ -2,6 +2,7 @@
 import { computed, ref, provide, onMounted } from 'vue'
 import Icon from './components/Icon.vue'
 import { route, go, back, current } from './router'
+import { closeTopOverlay } from './overlay'
 import HomeView from './views/HomeView.vue'
 import DetailView from './views/DetailView.vue'
 import EditView from './views/EditView.vue'
@@ -25,11 +26,12 @@ const tabs = [
   { key: 'settings', label: '我的', icon: 'user' }
 ]
 
-// 安卓实体返回键：先退栈，退无可退才退出 App
+// 安卓实体返回键：先关浮层，再退栈，退无可退才退出 App
 onMounted(async () => {
   try {
     const { App: CapApp } = await import('@capacitor/app')
     CapApp.addListener('backButton', () => {
+      if (closeTopOverlay()) return
       if (route.stack.length > 1) back()
       else CapApp.exitApp()
     })

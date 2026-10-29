@@ -1,11 +1,25 @@
 <script setup>
-import { computed, inject, reactive, ref, watch } from 'vue'
+import { computed, inject, onUnmounted, reactive, ref, watch } from 'vue'
 import Icon from '../components/Icon.vue'
 import { db, billTotal, monthlyAvg, perSqm, money, monthLabel, thisMonth, isLiving, blankProperty, uid } from '../store'
+import { registerOverlay } from '../overlay'
 
 const toast = inject('toast')
 const pickerOpen = ref(false)
 const sheetOpen = ref(false)
+
+// 弹层打开时登记，让返回键先关弹层而不是退出这一页
+let unOverlay = null
+const anySheet = computed(() => sheetOpen.value || pickerOpen.value)
+watch(anySheet, (open) => {
+  if (open && !unOverlay) {
+    unOverlay = registerOverlay(() => { sheetOpen.value = false; pickerOpen.value = false })
+  } else if (!open && unOverlay) {
+    unOverlay()
+    unOverlay = null
+  }
+}, { immediate: true })
+onUnmounted(() => { if (unOverlay) unOverlay() })
 
 const propId = ref(db.properties.find(isLiving)?.id || db.properties[0]?.id)
 const prop = computed(() => db.properties.find(p => p.id === propId.value) || db.properties[0])
