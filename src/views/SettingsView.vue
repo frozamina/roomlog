@@ -8,6 +8,9 @@ const toast = inject('toast')
 const fileInput = ref(null)
 const busy = ref(false)
 
+// CI 构建时注入；本地 npm run dev 没有这个变量，显示 dev 便于区分
+const version = import.meta.env.VITE_APP_VERSION || 'dev'
+
 function allPhotoIds() {
   const ids = []
   for (const p of db.properties) for (const ph of (p.photos || [])) if (ph && ph.id) ids.push(ph.id)
@@ -203,8 +206,10 @@ async function wipe() {
 
       <div class="section-title"><h5>关于</h5></div>
       <div class="card about">
+        <!-- 版本号由构建时注入（CI 传 VITE_APP_VERSION=0.1.<run_number>），
+             写死会出现「装的是 0.1.8、页面显示 0.1.0」这种对不上号的情况。 -->
         <div class="ab">
-          <span>版本</span><b class="num">0.1.0</b>
+          <span>版本</span><b class="num">{{ version }}</b>
         </div>
         <div class="ab">
           <span>数据存放</span><b>仅本机，不联网</b>

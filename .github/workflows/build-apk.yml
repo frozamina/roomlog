@@ -31,8 +31,12 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      # 版本号从构建号来，和 APK 的 versionName 保持一致，
+      # 设置页「关于」里显示的就是这个值（Vite 只暴露 VITE_ 前缀的变量）。
       - name: Build web assets
         run: npm run build
+        env:
+          VITE_APP_VERSION: 0.1.${{ github.run_number }}
 
       - name: Sync Capacitor Android
         run: npx cap sync android
