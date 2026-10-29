@@ -193,8 +193,10 @@ const period = (p) => {
 .rh{display:flex;justify-content:space-between;align-items:baseline}
 .rh span{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .rh b{font-size:10.5px;color:var(--ink-2);font-weight:600}
-.rb{display:flex;align-items:flex-end;gap:7px;height:54px;margin-top:8px}
-.rc{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+/* justify-content:center + max-width 是为了「只有一两个月数据」的情形：
+   纯 flex:1 会让唯一那根柱子吃掉整行宽，看上去就是一条粗横杠。 */
+.rb{display:flex;align-items:flex-end;gap:7px;height:54px;margin-top:8px;justify-content:center}
+.rc{flex:1 1 0;min-width:0;max-width:52px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
 .rc i{width:100%;flex:none;border-radius:4px 4px 2px 2px;background:var(--sand-2);transition:height .5s var(--ease)}
 .rc:last-child i{background:var(--pine)}
 .rc span{font-size:8px;color:var(--ink-3)}
