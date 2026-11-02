@@ -1,11 +1,12 @@
 <script setup>
-import { computed, inject, reactive, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import Icon from '../components/Icon.vue'
 import FieldInput from '../components/FieldInput.vue'
 import PhotoViewer from '../components/PhotoViewer.vue'
-import { go, back, scrollTop } from '../router'
+import { go, back, scrollTop, route } from '../router'
 import { db, DIMENSIONS, RATE_ITEMS, FIELD_GROUPS, blankProperty, today } from '../store'
 import { addPhotos, ensure, thumbOf, removePhoto as dropPhoto } from '../photos'
+import { registerOverlay } from '../overlay'
 
 const props = defineProps({ id: String, q: Object })
 const toast = inject('toast')
@@ -104,15 +105,49 @@ function next() {
     step.value++
     scrollTop()
   } else {
-    save()
+    finish()
   }
 }
 function prev() {
-  if (step.value === 0) back()
-  else { step.value--; scrollTop() }
+  if (step.value > 0) { step.value--; scrollTop() }
 }
 
-function save() {
+/* ---------- 退出 ---------- */
+// 进入页面时的快照：一个字段都没动过就不用弹窗打扰，直接退出；
+// 只要改过任何一步，退出前都问一句要不要存。
+const snapshot = JSON.stringify(draft)
+const dirty = computed(() => JSON.stringify(draft) !== snapshot)
+
+const exitOpen = ref(false)
+
+/** 离开编辑页：正常情况退回上一页；直接打开的（栈里只有自己）就回首页 */
+function leave() {
+  exitOpen.value = false
+  if (route.stack.length > 1) back()
+  else go('home', null, { reset: true })
+}
+
+function askExit() {
+  if (!dirty.value) { leave(); return }
+  exitOpen.value = true
+}
+
+// 安卓返回键：本页整层登记一个浮层，第一次按下弹「是否保存」，
+// 弹窗开着时再按一次就关掉弹窗，而不是直接把表单退掉。
+let unOverlay = null
+onMounted(() => {
+  unOverlay = registerOverlay(() => {
+    if (exitOpen.value) exitOpen.value = false
+    else askExit()
+  })
+})
+onUnmounted(() => { if (unOverlay) unOverlay() })
+
+let committed = false
+
+function commit() {
+  if (committed) return
+  committed = true
   DIMENSIONS.forEach(d => {
     draft.care[d.key] = careKeys.value.includes(d.key) ? 3 : 1.5
   })
@@ -124,8 +159,23 @@ function save() {
   }
   // 这里才真正从 IndexedDB 删掉被摘除的照片
   removedIds.forEach(id => dropPhoto(id))
+  removedIds.length = 0
+}
+
+/** 保存并离开编辑页 */
+function finish() {
+  exitOpen.value = false
+  commit()
   toast('已保存')
-  go('detail', draft.id, { reset: false })
+  // 新建的房源要就地换成详情页；改现有房源则退回去，详情读的是同一份数据
+  if (isNew) go('detail', draft.id, { replace: true })
+  else if (route.stack.length > 1) back()
+  else go('detail', draft.id, { reset: true })
+}
+
+/** 不保存直接走：被摘掉的照片没删库，下次进来还能看到 */
+function discard() {
+  leave()
 }
 
 function remove() {
@@ -138,7 +188,7 @@ function remove() {
 <template>
   <div class="root">
     <div class="nav solid">
-      <button class="nav-btn" @click="prev" aria-label="返回"><Icon name="back" :size="16" /></button>
+      <button class="nav-btn" @click="askExit" aria-label="退出编辑"><Icon name="back" :size="16" /></button>
       <div class="nav-title">{{ isNew ? '新建房源' : '编辑房源' }}</div>
       <div class="nav-spacer"></div>
       <span class="stepnum num">{{ step + 1 }} / {{ steps.length }}</span>
@@ -293,8 +343,29 @@ function remove() {
     </div>
 
     <div class="foot">
+      <button class="btn btn-ghost" :disabled="step === 0" @click="prev">
+        <Icon name="back" :size="14" :sw="2.2" /> 上一步
+      </button>
       <button class="btn btn-primary" @click="next">{{ step === steps.length - 1 ? '保存' : '下一步' }}</button>
     </div>
+
+    <!-- 退出确认 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="exitOpen" class="sheet-mask" @click="exitOpen = false"></div>
+      </Transition>
+      <Transition name="fade">
+        <div v-if="exitOpen" class="dlg" role="dialog" aria-modal="true" aria-label="是否保存">
+          <h3 class="serif">保存这次的修改？</h3>
+          <p>不用翻到最后一步——前面填的内容会一起存下来，下次进来还在。</p>
+          <div class="dlg-act">
+            <button class="btn btn-primary" @click="finish">保存并退出</button>
+            <button class="btn btn-ghost" @click="discard">不保存，退出</button>
+            <button class="btn btn-text" @click="exitOpen = false">继续编辑</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- capture 让安卓直接调相机；不给 capture 的那个走系统相册选择器 -->
     <input ref="camInput" class="hideinp" type="file" accept="image/*" capture="environment" @change="onPick" />
@@ -351,7 +422,20 @@ function remove() {
 .care-p{font-size:10.5px;color:var(--pine);opacity:.66;margin-top:5px;line-height:1.5}
 
 .del{margin:18px auto 0;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--clay);padding:10px 16px}
-.foot{flex:0 0 auto;padding:10px 20px calc(8px + var(--safe-b));background:var(--paper);border-top:1px solid var(--line)}
+.foot{flex:0 0 auto;display:flex;gap:10px;padding:10px 16px calc(8px + var(--safe-b));background:var(--paper);border-top:1px solid var(--line)}
+.foot .btn-ghost{flex:0 0 108px;gap:3px;font-size:14px}
+.foot .btn-primary{flex:1}
+
+/* 退出确认：居中的小对话框，不是底部抽屉 */
+.dlg{position:fixed;left:18px;right:18px;top:50%;transform:translateY(-50%);z-index:62;
+  background:var(--card);border-radius:20px;padding:22px 20px 10px;box-shadow:var(--sh-2);
+  animation:dlgIn .24s var(--ease)}
+.dlg h3{font-size:18px;font-weight:600;letter-spacing:-.01em}
+.dlg p{font-size:12px;color:var(--ink-3);line-height:1.65;margin-top:7px}
+.dlg-act{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+.dlg-act .btn{height:46px}
+.dlg-act .btn-text{height:42px}
+@keyframes dlgIn{from{opacity:0;transform:translateY(-46%) scale(.96)}}
 
 /* ============ 照片 ============ */
 .phcard{padding:4px 14px 11px;margin-top:12px}

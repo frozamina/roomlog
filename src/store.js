@@ -194,6 +194,15 @@ export function billTotal(b) {
     + n(b.property) + n(b.manageFee) + n(b.net) + n(b.parking) + other
 }
 
+/** 水电用量：没填用量但填了金额和单价时现算一个，别让界面显示 0 */
+export function usageOf(entry) {
+  const u = Number(entry?.usage) || 0
+  if (u > 0) return u
+  const a = Number(entry?.amount) || 0
+  const p = Number(entry?.price) || 0
+  return a > 0 && p > 0 ? Math.round((a / p) * 10) / 10 : 0
+}
+
 /** 某房源的月均支出（优先用账单均值，无账单则用规则估算） */
 export function monthlyAvg(p) {
   const bills = p.bills || []

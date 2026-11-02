@@ -26,8 +26,12 @@ function syncHash() {
 }
 
 export function go(name, id = null, opts = {}) {
-  if (opts.reset) route.stack = [{ name, id }]
-  else route.stack.push({ name, id })
+  const r = { name, id }
+  if (opts.reset) route.stack = [r]
+  // replace：把栈顶换成新页面。新建房源存完要从「编辑」直接变成「详情」，
+  // 否则返回键会退回那张已经提交的表单。
+  else if (opts.replace) route.stack.splice(route.stack.length - 1, 1, r)
+  else route.stack.push(r)
   syncHash()
   scrollTop()
 }

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import Icon from '../components/Icon.vue'
 import PhotoViewer from '../components/PhotoViewer.vue'
 import { go, back } from '../router'
-import { db, DIMENSIONS, dimScore, livability, monthlyAvg, perSqm, billTotal, money, monthsBetween, isLiving, monthLabel } from '../store'
+import { db, DIMENSIONS, dimScore, livability, monthlyAvg, perSqm, billTotal, money, monthsBetween, isLiving, monthLabel, usageOf } from '../store'
 import { ensure, thumbOf } from '../photos'
 
 const props = defineProps({ id: String })
@@ -166,7 +166,7 @@ const openBill = () => go('bills', p.value.id)
           <div class="brow" v-for="b in [...p.bills].sort((a, c) => c.month.localeCompare(a.month)).slice(0, 3)" :key="b.id">
             <div class="bico">{{ b.month.slice(5) }}月</div>
             <div class="bn">
-              <div class="num">水 {{ b.water?.usage || 0 }} 吨 · 电 {{ b.elec?.usage || 0 }} 度</div>
+              <div class="num">水 {{ usageOf(b.water) }} 吨 · 电 {{ usageOf(b.elec) }} 度</div>
               <div class="bs">合计 ¥{{ money(billTotal(b)) }}</div>
             </div>
             <div class="ba num">¥{{ money(billTotal(b)) }}</div>

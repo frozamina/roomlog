@@ -1,7 +1,7 @@
 <script setup>
 import { computed, inject, onUnmounted, reactive, ref, watch } from 'vue'
 import Icon from '../components/Icon.vue'
-import { db, billTotal, monthlyAvg, perSqm, money, monthLabel, thisMonth, isLiving, blankProperty, uid } from '../store'
+import { db, billTotal, monthlyAvg, perSqm, money, monthLabel, thisMonth, isLiving, uid, usageOf } from '../store'
 import { registerOverlay } from '../overlay'
 
 const toast = inject('toast')
@@ -98,6 +98,54 @@ function shiftMonth(dir) {
 /* ---------- 记一笔 ---------- */
 const form = reactive({})
 
+// 单价已知时，用量与金额互为推导。记一下这次是「从谁算出来的」，
+// 好在下面显示一行算式，让人知道那个数字不是凭空冒出来的。
+const derived = reactive({ water: '', elec: '' })
+const toNum = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0 }
+const filled = (v) => v !== '' && v !== null && v !== undefined
+const r2 = (n) => Math.round(n * 100) / 100
+const r1 = (n) => Math.round(n * 10) / 10
+
+function sync(kind, from) {
+  const f = form[kind]
+  if (!f) return
+  derived[kind] = ''
+  const price = toNum(f.price)
+  if (!(price > 0)) return
+
+  if (from === 'usage') {
+    if (!filled(f.usage) || toNum(f.usage) <= 0) return
+    f.amount = r2(toNum(f.usage) * price)
+    derived[kind] = 'amount'
+  } else if (from === 'amount') {
+    if (!filled(f.amount) || toNum(f.amount) <= 0) return
+    f.usage = r1(toNum(f.amount) / price)
+    derived[kind] = 'usage'
+  } else {
+    // 改单价：用量优先（那是抄表读数），用量空着才从金额反推
+    if (filled(f.usage) && toNum(f.usage) > 0) {
+      f.amount = r2(toNum(f.usage) * price)
+      derived[kind] = 'amount'
+    } else if (filled(f.amount) && toNum(f.amount) > 0) {
+      f.usage = r1(toNum(f.amount) / price)
+      derived[kind] = 'usage'
+    }
+  }
+}
+
+function hint(kind) {
+  const f = form[kind]
+  if (!f) return ''
+  const price = toNum(f.price)
+  if (!(price > 0)) return ''
+  const unit = kind === 'water' ? '吨' : '度'
+  const usage = r1(toNum(f.usage))
+  const amount = toNum(f.amount)
+  if (derived[kind] === 'usage' && usage > 0) return `¥${money(amount)} ÷ ${price} 元/${unit} = ${usage} ${unit}`
+  if (derived[kind] === 'amount' && usage > 0) return `${usage} ${unit} × ${price} 元/${unit} = ¥${money(amount)}`
+  return ''
+}
+
 function openSheet() {
   const b = current.value || {
     rent: prop.value?.rent || '', water: { usage: '', price: prop.value?.facts?.waterPrice || '', amount: '' },
@@ -108,18 +156,13 @@ function openSheet() {
   }
   Object.keys(form).forEach(k => delete form[k])
   Object.assign(form, JSON.parse(JSON.stringify(b)))
+  if (!form.water) form.water = { usage: '', price: '', amount: '' }
+  if (!form.elec) form.elec = { usage: '', price: '', amount: '' }
+  if (!form.gas) form.gas = { usage: '', amount: '' }
+  if (!form.other) form.other = []
+  derived.water = ''
+  derived.elec = ''
   sheetOpen.value = true
-}
-
-function onUsage(kind, val) {
-  const f = form[kind]
-  f.usage = val === '' ? '' : Number(val)
-  const price = Number(f.price) || 0
-  if (price && f.usage !== '') f.amount = Math.round(f.usage * price * 100) / 100
-}
-function onAmount(kind, val) {
-  const f = form[kind]
-  f.amount = val === '' ? '' : Number(val)
 }
 
 function addOther() {
@@ -130,7 +173,22 @@ function addOther() {
 function saveBill() {
   const p = prop.value
   if (!p) return
-  const data = { ...JSON.parse(JSON.stringify(form)), id: current.value?.id || uid(), month: month.value }
+
+  // 编辑时为了能打小数点，输入框里的值都按字符串存；落库前统一转回数字
+  const clean = JSON.parse(JSON.stringify(form))
+  const n = (v) => (filled(v) && Number.isFinite(Number(v)) ? Number(v) : '')
+  clean.rent = n(clean.rent)
+  ;['property', 'manageFee', 'net', 'parking'].forEach(k => { clean[k] = n(clean[k]) })
+  ;['water', 'elec', 'gas'].forEach(k => {
+    const e = clean[k]
+    if (!e) return
+    if ('usage' in e) e.usage = n(e.usage)
+    if ('price' in e) e.price = n(e.price)
+    if ('amount' in e) e.amount = n(e.amount)
+  })
+  ;(clean.other || []).forEach(o => { o.amount = n(o.amount) })
+
+  const data = { ...clean, id: current.value?.id || uid(), month: month.value }
   if (!p.bills) p.bills = []
   const i = p.bills.findIndex(b => b.month === month.value)
   if (i >= 0) p.bills[i] = data
@@ -186,12 +244,12 @@ function deleteBill() {
       <div class="duo">
         <div class="card duo-card">
           <div class="h"><b style="background:#5B8DC0"></b>水费</div>
-          <div class="v"><b class="num">{{ current.water?.usage || 0 }}</b><span>吨</span></div>
+          <div class="v"><b class="num">{{ usageOf(current.water) }}</b><span>吨</span></div>
           <div class="f num">¥{{ money(current.water?.amount) }}<template v-if="current.water?.price"> · 单价 {{ current.water.price }}/吨</template></div>
         </div>
         <div class="card duo-card">
           <div class="h"><b style="background:#C9963C"></b>电费</div>
-          <div class="v"><b class="num">{{ current.elec?.usage || 0 }}</b><span>度</span></div>
+          <div class="v"><b class="num">{{ usageOf(current.elec) }}</b><span>度</span></div>
           <div class="f num">¥{{ money(current.elec?.amount) }}<template v-if="current.elec?.price"> · 单价 {{ current.elec.price }}/度</template></div>
         </div>
       </div>
@@ -267,6 +325,7 @@ function deleteBill() {
         <div v-if="sheetOpen" class="sheet">
           <div class="sheet-grip"></div>
           <h3 class="sheet-t">{{ monthLabel(month) }} · 记一笔</h3>
+          <p class="sheet-hint">水电填了单价之后，用量和金额只要填一个，另一个自动算出来。</p>
 
           <div class="frow">
             <label>房租</label>
@@ -276,19 +335,21 @@ function deleteBill() {
           <div class="group">
             <div class="gh"><b style="background:#5B8DC0"></b>水费</div>
             <div class="g3">
-              <div><label>用量（吨）</label><input :value="form.water?.usage" type="number" inputmode="decimal" class="fin num" @input="onUsage('water', $event.target.value)" /></div>
-              <div><label>单价</label><input v-model.number="form.water.price" type="number" inputmode="decimal" class="fin num" /></div>
-              <div><label>金额</label><input :value="form.water?.amount" type="number" inputmode="decimal" class="fin num" @input="onAmount('water', $event.target.value)" /></div>
+              <div><label>用量（吨）</label><input v-model="form.water.usage" type="text" inputmode="decimal" class="fin num" @input="sync('water','usage')" /></div>
+              <div><label>单价</label><input v-model="form.water.price" type="text" inputmode="decimal" class="fin num" @input="sync('water','price')" /></div>
+              <div><label>金额</label><input v-model="form.water.amount" type="text" inputmode="decimal" class="fin num" @input="sync('water','amount')" /></div>
             </div>
+            <p class="calc num" v-if="hint('water')">{{ hint('water') }}</p>
           </div>
 
           <div class="group">
             <div class="gh"><b style="background:#C9963C"></b>电费</div>
             <div class="g3">
-              <div><label>用量（度）</label><input :value="form.elec?.usage" type="number" inputmode="decimal" class="fin num" @input="onUsage('elec', $event.target.value)" /></div>
-              <div><label>单价</label><input v-model.number="form.elec.price" type="number" inputmode="decimal" class="fin num" /></div>
-              <div><label>金额</label><input :value="form.elec?.amount" type="number" inputmode="decimal" class="fin num" @input="onAmount('elec', $event.target.value)" /></div>
+              <div><label>用量（度）</label><input v-model="form.elec.usage" type="text" inputmode="decimal" class="fin num" @input="sync('elec','usage')" /></div>
+              <div><label>单价</label><input v-model="form.elec.price" type="text" inputmode="decimal" class="fin num" @input="sync('elec','price')" /></div>
+              <div><label>金额</label><input v-model="form.elec.amount" type="text" inputmode="decimal" class="fin num" @input="sync('elec','amount')" /></div>
             </div>
+            <p class="calc num" v-if="hint('elec')">{{ hint('elec') }}</p>
           </div>
 
           <div class="g2">
@@ -385,8 +446,9 @@ function deleteBill() {
 .mh{display:flex;justify-content:space-between;align-items:baseline}
 .mh span{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
 .mh b{font-size:10px;color:var(--ink-2);font-weight:600}
-.chart{display:flex;align-items:flex-end;gap:6px;height:60px;margin-top:9px}
-.chart .c{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
+/* 只有一两个月的记录时，flex:1 会把柱子拉成整块横杠，加个宽度上限并居中 */
+.chart{display:flex;align-items:flex-end;justify-content:center;gap:6px;height:60px;margin-top:9px}
+.chart .c{flex:1 1 0;min-width:0;max-width:56px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;height:100%}
 .chart .c i{width:100%;flex:none;border-radius:4px 4px 2px 2px;background:var(--sand-2)}
 .chart .c.on i{background:var(--pine)}
 .chart .c span{font-size:8px;color:var(--ink-3)}
@@ -401,6 +463,8 @@ function deleteBill() {
 
 /* sheet */
 .sheet-t{font-family:ui-serif,'Noto Serif SC',Georgia,serif;font-size:18px;font-weight:600;margin-bottom:14px}
+.sheet-hint{font-size:10.5px;color:var(--ink-3);line-height:1.6;margin:-8px 0 6px}
+.calc{font-size:10px;color:var(--pine);opacity:.8;margin-top:6px;letter-spacing:.01em}
 .pick{display:flex;align-items:center;justify-content:space-between;width:100%;padding:13px 0;border-bottom:1px solid var(--line);text-align:left;color:var(--ink)}
 .pick:last-child{border-bottom:none}
 .pick.on{color:var(--pine)}
